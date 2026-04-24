@@ -41,7 +41,7 @@ class MedicalGraph:
         rels_check = [] # 疾病－检查关系
         rels_drug_producer = [] # 厂商－药物关系
 
-        rels_symptom = [] #疾病症状关系
+        rels_symptom = [] # 疾病症状关系
         rels_acompany = [] # 疾病并发关系
         rels_category = [] #　疾病与科室之间的关系
 
@@ -169,11 +169,16 @@ class MedicalGraph:
     def create_diseases_nodes(self, disease_infos):
         count = 0
         for disease_dict in disease_infos:
-            node = Node("Disease", name=disease_dict['name'], desc=disease_dict['desc'],
-                        prevent=disease_dict['prevent'] ,cause=disease_dict['cause'],
-                        easy_get=disease_dict['easy_get'],cure_lasttime=disease_dict['cure_lasttime'],
-                        cure_department=disease_dict['cure_department']
-                        ,cure_way=disease_dict['cure_way'] , cured_prob=disease_dict['cured_prob'])
+            node = Node("Disease",
+                        name=disease_dict['name'],
+                        desc=disease_dict['desc'],
+                        prevent=disease_dict['prevent'] ,
+                        cause=disease_dict['cause'],
+                        easy_get=disease_dict['easy_get'],
+                        cure_lasttime=disease_dict['cure_lasttime'],
+                        cure_department=disease_dict['cure_department'],
+                        cure_way=disease_dict['cure_way'] ,
+                        cured_prob=disease_dict['cured_prob'])
             self.g.create(node)
             count += 1
             print(count)

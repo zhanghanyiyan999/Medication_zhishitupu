@@ -8,20 +8,22 @@ class QuestionPaser:
 
     '''构建实体节点'''
     def build_entitydict(self, args):
+        # {'感冒': ['disease']}
         entity_dict = {}
-        for arg, types in args.items():
+        for arg, types in args.items():  # 感冒 ['disease']
             for type in types:
                 if type not in entity_dict:
                     entity_dict[type] = [arg]
                 else:
                     entity_dict[type].append(arg)
 
-        return entity_dict
+        return entity_dict  # {'disease': ['感冒']}
 
     '''解析主函数'''
     def parser_main(self, res_classify):
+        # {'args': {'感冒': ['disease']}, 'question_types': ['disease_do_food', 'disease_drug']}
         args = res_classify['args']
-        entity_dict = self.build_entitydict(args)
+        entity_dict = self.build_entitydict(args)  # {'disease': ['感冒']}
         question_types = res_classify['question_types']
         sqls = []
         for question_type in question_types:

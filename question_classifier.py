@@ -5,6 +5,8 @@
 # Date: 18-10-4
 
 import os
+from socket import has_dualstack_ipv6
+
 import ahocorasick
 
 class QuestionClassifier:
@@ -20,16 +22,16 @@ class QuestionClassifier:
         self.symptom_path = os.path.join(cur_dir, 'dict/symptom.txt')
         self.deny_path = os.path.join(cur_dir, 'dict/deny.txt')
         # 加载特征词
-        self.disease_wds= [i.strip() for i in open(self.disease_path) if i.strip()]
-        self.department_wds= [i.strip() for i in open(self.department_path) if i.strip()]
-        self.check_wds= [i.strip() for i in open(self.check_path) if i.strip()]
-        self.drug_wds= [i.strip() for i in open(self.drug_path) if i.strip()]
-        self.food_wds= [i.strip() for i in open(self.food_path) if i.strip()]
-        self.producer_wds= [i.strip() for i in open(self.producer_path) if i.strip()]
-        self.symptom_wds= [i.strip() for i in open(self.symptom_path) if i.strip()]
+        self.disease_wds= [i.strip() for i in open(self.disease_path,encoding='utf-8') if i.strip()]
+        self.department_wds= [i.strip() for i in open(self.department_path,encoding='utf-8') if i.strip()]
+        self.check_wds= [i.strip() for i in open(self.check_path,encoding='utf-8') if i.strip()]
+        self.drug_wds= [i.strip() for i in open(self.drug_path,encoding='utf-8') if i.strip()]
+        self.food_wds= [i.strip() for i in open(self.food_path,encoding='utf-8') if i.strip()]
+        self.producer_wds= [i.strip() for i in open(self.producer_path,encoding='utf-8') if i.strip()]
+        self.symptom_wds= [i.strip() for i in open(self.symptom_path,encoding='utf-8') if i.strip()]
         self.region_words = set(self.department_wds + self.disease_wds + self.check_wds + self.drug_wds + self.food_wds + self.producer_wds + self.symptom_wds)
-        self.deny_words = [i.strip() for i in open(self.deny_path) if i.strip()]
-        # 构造领域actree
+        self.deny_words = [i.strip() for i in open(self.deny_path,encoding='utf-8') if i.strip()]
+        # 构造领域 actree
         self.region_tree = self.build_actree(list(self.region_words))
         # 构建词典
         self.wdtype_dict = self.build_wdtype_dict()
@@ -63,7 +65,7 @@ class QuestionClassifier:
         medical_dict = self.check_medical(question)
         if not medical_dict:
             return {}
-        data['args'] = medical_dict
+        data['args'] = medical_dict  # {'感冒': ['disease']}
         #收集问句当中所涉及到的实体类型
         types = []
         for type_ in medical_dict.values():
@@ -166,7 +168,11 @@ class QuestionClassifier:
 
         return data
 
-    '''构造词对应的类型'''
+    '''
+        构造词对应的类型
+        '拌菜花': ['food'], '重庆迪康长江四环素片': ['producer'], '大豆芽冬菇脚腐皮汤': ['food']
+        构建实体与实例之间的关系
+    '''
     def build_wdtype_dict(self):
         wd_dict = dict()
         for wd in self.region_words:
@@ -189,25 +195,49 @@ class QuestionClassifier:
 
     '''构造actree，加速过滤'''
     def build_actree(self, wordlist):
+        """
+        构造 AC 自动机 (Aho-Corasick Automaton)，用于加速多模式字符串匹配。
+        
+        作用：
+        1. 高效匹配：相比传统的逐个单词遍历搜索，AC 自动机可以在一次扫描中同时匹配多个关键词，
+           时间复杂度接近 O(N)（N 为文本长度），极大地提高了在长文本中查找大量词典词条的效率。
+        2. 实体识别基础：在本项目中，它用于快速从用户问句中提取出预定义词典中的医疗实体
+           （如疾病、症状、药品等），是后续问句分类和知识图谱查询的关键预处理步骤。
+
+        返回结果：
+        返回一个构建完成并处于就绪状态的 ahocorasick.Automaton 对象。
+        该对象可以通过 .iter() 方法在给定文本中迭代查找所有匹配的关键词及其位置。
+        """
         actree = ahocorasick.Automaton()
+        # 将词典中的每个单词添加到自动机中
+        # value 存储为 (index, word) 元组，以便在匹配时获取原始单词
         for index, word in enumerate(wordlist):
             actree.add_word(word, (index, word))
+        # 构建失败指针（failure links），使自动机进入可搜索状态
         actree.make_automaton()
-        return actree
+        return actree  # 其实就是拿用户问题中的一些关键词去匹配在wordlist中所在的位置，但是返回时可以设置返回的是什么单词+索引或者索引+单词和位置
 
     '''问句过滤'''
     def check_medical(self, question):
         region_wds = []
-        for i in self.region_tree.iter(question):
-            wd = i[1][1]
+        # question = '感冒应该喝什么药呀？'
+        for i in self.region_tree.iter(question):  # (1, (21640, '感冒'))
+            wd = i[1][1]  # '感冒'
             region_wds.append(wd)
+        # 去除重叠词：如果某个词是另一个更长匹配词的一部分，则将其视为冗余并移除
+        # 例如：若同时匹配到“感冒”和“重感冒”，则保留“重感冒”，去除“感冒”
         stop_wds = []
         for wd1 in region_wds:
             for wd2 in region_wds:
-                if wd1 in wd2 and wd1 != wd2:
+                # 如果 wd1 是 wd2 的子串，且两者不相等，则 wd1 是冗余的
+                if wd1 != wd2 and wd1 in wd2:
                     stop_wds.append(wd1)
+        
+        # 过滤掉冗余词，得到最终的实体列表
         final_wds = [i for i in region_wds if i not in stop_wds]
-        final_dict = {i:self.wdtype_dict.get(i) for i in final_wds}
+        
+        # 构建最终结果字典：{实体词: [实体类型列表]}
+        final_dict = {i: self.wdtype_dict.get(i) for i in final_wds}
 
         return final_dict
 
@@ -221,6 +251,11 @@ class QuestionClassifier:
 
 if __name__ == '__main__':
     handler = QuestionClassifier()
+    # print(handler.build_wdtype_dict())
+    # print(handler.region_tree)
+    # print([(type(i),i) for i in handler.region_tree.iter('感冒应该喝什么药呀？')])  # [(<class 'tuple'>, (1, (11814, '感冒')))]
+    # print(handler.check_medical('感冒应该喝什么药呀？'))
+    # handler.check_medical('感冒应该喝什么药呀？')
     while 1:
         question = input('input an question:')
         data = handler.classify(question)
